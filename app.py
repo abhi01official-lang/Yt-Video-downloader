@@ -1,64 +1,90 @@
-import os
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import yt_dlp
 
 app = Flask(__name__)
-CORS(app)
+# Enable CORS for all routes so GitHub Pages can talk to Render
+CORS(app, resources={r"/*": {"origins": "*"}})
+
+@app.route('/', methods=['GET'])
+def home():
+    return jsonify({"status": "online", "message": "YouTube Downloader API is running!"})
 
 @app.route('/api/extract', methods=['POST'])
-def extract():
+def extract_video():
     data = request.get_json()
-    url = data.get('url')
-
-    if not url:
+    if not data or 'url' not in data:
         return jsonify({'error': 'Please provide a valid YouTube URL'}), 400
 
+    url = data['url']
+
+    # Custom options to help bypass YouTube datacenter/cloud IP blocks
     ydl_opts = {
         'quiet': True,
         'no_warnings': True,
+        'skip_download': True,
+        'format': 'best',
+        'http_headers': {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+        },
+        'extractor_args': {
+            'youtube': {
+                'player_client': ['android', 'web']
+            }
+        }
     }
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
-            formats = info.get('formats', [])
             
-            # Extract Video + Audio Formats
+            title = info.get('title', 'YouTube Video')
+            thumbnail = info.get('thumbnail', '')
+            formats = info.get('formats', [])
+
             video_formats = []
-            for f in formats:
-                if f.get('vcodec') != 'none' and f.get('acodec') != 'none':
-                    video_formats.append({
-                        'quality': f.get('format_note') or f"{f.get('height')}p",
-                        'ext': f.get('ext'),
-                        'url': f.get('url')
-                    })
-
-            # Extract Audio-Only Stream
-            best_audio = None
-            for f in formats:
-                if f.get('vcodec') == 'none' and f.get('acodec') != 'none':
-                    if not best_audio or (f.get('abr') or 0) > (best_audio.get('abr') or 0):
-                        best_audio = f
-
             audio_format = None
-            if best_audio:
-                audio_format = {
-                    'quality': f"{int(best_audio.get('abr', 128))}kbps MP3",
-                    'ext': 'mp3',
-                    'url': best_audio.get('url')
-                }
+
+            for f in formats:
+                # Video formats with audio/video
+                if f.get('vcodec') != 'none' and f.get('url'):
+                    quality = f.get('format_note') or f"{f.get('height', 'SD')}p"
+                    ext = f.get('ext', 'mp4')
+                    # Keep main resolutions
+                    if f.get('height') in [360, 480, 720, 1080]:
+                        video_formats.append({
+                            'quality': quality,
+                            'ext': ext,
+                            'url': f['url']
+                        })
+
+                # Best standalone audio format
+                if f.get('acodec') != 'none' and f.get('vcodec') == 'none' and f.get('url'):
+                    audio_format = {
+                        'quality': f"{int(f.get('abr', 128))} kbps",
+                        'ext': f.get('ext', 'mp3'),
+                        'url': f['url']
+                    }
+
+            # Deduplicate video formats by quality
+            unique_videos = []
+            seen_qualities = set()
+            for v in video_formats:
+                if v['quality'] not in seen_qualities:
+                    seen_qualities.add(v['quality'])
+                    unique_videos.append(v)
 
             return jsonify({
-                'title': info.get('title'),
-                'thumbnail': info.get('thumbnail'),
-                'video_formats': video_formats,
+                'title': title,
+                'thumbnail': thumbnail,
+                'video_formats': unique_videos,
                 'audio_format': audio_format
             })
 
     except Exception as e:
-        return jsonify({'error': 'Failed to process video link.'}), 500
+        return jsonify({'error': f'Failed to process video: {str(e)}'}), 500
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port)
+    app.run(host='0.0.0.0', port=10000)

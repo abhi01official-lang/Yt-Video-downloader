@@ -138,58 +138,89 @@ async function processVideo() {
     }
 
     loaderDiv.style.display = 'block';
+    loaderDiv.innerText = 'Waking up backend server (this may take 30-40 seconds on first load)...';
 
-    try {
-        const response = await fetch(BACKEND_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url })
-        });
+    // Retry loop up to 3 times (gives Render up to 45s to wake up)
+    let maxRetries = 3;
+    let attempt = 0;
+    let success = false;
+    let data = null;
 
-        const data = await response.json();
-        loaderDiv.style.display = 'none';
+    while (attempt < maxRetries && !success) {
+        try {
+            attempt++;
+            if (attempt > 1) {
+                loaderDiv.innerText = `Server is warming up... Retrying (${attempt}/${maxRetries})...`;
+            }
 
-        if (data.error) {
-            errorDiv.innerText = data.error;
-            return;
-        }
+            // Set a generous timeout controller for 45 seconds
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 45000);
 
-        currentVideoTitle = (data.title || "video").replace(/[^a-zA-Z0-9 _-]/g, "");
-        document.getElementById('videoTitle').innerText = data.title;
-        document.getElementById('videoThumb').src = data.thumbnail;
-
-        // Render Audio Download Link
-        audioButtons.innerHTML = '';
-        if (data.audio_format) {
-            const btn = document.createElement('button');
-            btn.className = "dl-btn dl-audio";
-            btn.innerText = `🎵 Download Audio (${data.audio_format.quality})`;
-            btn.onclick = () => triggerDownload(data.audio_format.url, `${currentVideoTitle}.mp3`);
-            audioButtons.appendChild(btn);
-        } else {
-            audioButtons.innerText = "No separate audio stream found.";
-        }
-
-        // Render Video Download Links
-        videoButtons.innerHTML = '';
-        if (data.video_formats && data.video_formats.length > 0) {
-            data.video_formats.forEach(f => {
-                const btn = document.createElement('button');
-                btn.className = "dl-btn";
-                btn.innerText = `🎬 ${f.quality} (${f.ext.toUpperCase()})`;
-                btn.onclick = () => triggerDownload(f.url, `${currentVideoTitle}_${f.quality}.${f.ext}`);
-                videoButtons.appendChild(btn);
+            const response = await fetch(BACKEND_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ url }),
+                signal: controller.signal
             });
-        } else {
-            videoButtons.innerText = "No video formats available.";
+
+            clearTimeout(timeoutId);
+
+            if (response.ok) {
+                data = await response.json();
+                success = true;
+            }
+        } catch (err) {
+            console.warn(`Attempt ${attempt} failed. Retrying...`);
+            // Wait 3 seconds before trying again
+            await new Promise(res => setTimeout(res, 3000));
         }
-
-        resultsDiv.style.display = 'block';
-
-    } catch (err) {
-        loaderDiv.style.display = 'none';
-        errorDiv.innerText = 'Unable to connect to the backend server. Note: Free Render instances take ~30 seconds to wake up on first load.';
     }
+
+    loaderDiv.style.display = 'none';
+
+    if (!success || !data) {
+        errorDiv.innerText = 'Server startup timed out or server is unreachable. Please refresh and try again in 10 seconds.';
+        return;
+    }
+
+    if (data.error) {
+        errorDiv.innerText = data.error;
+        return;
+    }
+
+    // Render results
+    currentVideoTitle = (data.title || "video").replace(/[^a-zA-Z0-9 _-]/g, "");
+    document.getElementById('videoTitle').innerText = data.title;
+    document.getElementById('videoThumb').src = data.thumbnail;
+
+    // Render Audio Link
+    audioButtons.innerHTML = '';
+    if (data.audio_format) {
+        const btn = document.createElement('button');
+        btn.className = "dl-btn dl-audio";
+        btn.innerText = `🎵 Download Audio (${data.audio_format.quality})`;
+        btn.onclick = () => triggerDownload(data.audio_format.url, `${currentVideoTitle}.mp3`);
+        audioButtons.appendChild(btn);
+    } else {
+        audioButtons.innerText = "No separate audio stream found.";
+    }
+
+    // Render Video Links
+    videoButtons.innerHTML = '';
+    if (data.video_formats && data.video_formats.length > 0) {
+        data.video_formats.forEach(f => {
+            const btn = document.createElement('button');
+            btn.className = "dl-btn";
+            btn.innerText = `🎬 ${f.quality} (${f.ext.toUpperCase()})`;
+            btn.onclick = () => triggerDownload(f.url, `${currentVideoTitle}_${f.quality}.${f.ext}`);
+            videoButtons.appendChild(btn);
+        });
+    } else {
+        videoButtons.innerText = "No video formats available.";
+    }
+
+    resultsDiv.style.display = 'block';
 }
 
 // Forces media stream download in the browser instead of opening a web tab

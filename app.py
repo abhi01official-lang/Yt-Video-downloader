@@ -17,22 +17,22 @@ def extract_video():
 
     url = data['url']
 
-    # Configuration to bypass YouTube bot detection on cloud servers
+    # Updated ydl options using client fallback chain and custom headers
     ydl_opts = {
         'quiet': True,
         'no_warnings': True,
         'skip_download': True,
         'format': 'best',
-        # Use iOS/Android clients which bypass standard web bot challenges
         'extractor_args': {
             'youtube': {
-                'player_client': ['ios', 'mweb'],
+                'player_client': ['web_creator', 'android', 'ios'],
                 'skip': ['hls', 'dash']
             }
         },
         'http_headers': {
-            'User-Agent': 'com.google.ios.youtube/19.29.1 (iPhone16,2; U; CPU iOS 17_5_1 like Mac OS X; en_US)',
-            'Accept-Language': 'en-US,en;q=0.9',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
         }
     }
 
@@ -48,7 +48,7 @@ def extract_video():
             audio_format = None
 
             for f in formats:
-                # Video formats with audio/video or video-only
+                # Direct stream video formats
                 if f.get('vcodec') != 'none' and f.get('url'):
                     height = f.get('height')
                     quality = f"{height}p" if height else (f.get('format_note') or "SD")
@@ -61,7 +61,7 @@ def extract_video():
                         'height': height or 0
                     })
 
-                # Audio stream
+                # Best available audio stream
                 if f.get('acodec') != 'none' and f.get('vcodec') == 'none' and f.get('url'):
                     audio_format = {
                         'quality': f"{int(f.get('abr', 128))} kbps",
@@ -69,7 +69,7 @@ def extract_video():
                         'url': f['url']
                     }
 
-            # Filter unique video formats (360p, 480p, 720p, 1080p)
+            # Filter distinct resolutions (1080p, 720p, 480p, 360p)
             unique_videos = []
             seen_qualities = set()
             for v in sorted(video_formats, key=lambda x: x['height'], reverse=True):
@@ -81,9 +81,13 @@ def extract_video():
                         'url': v['url']
                     })
 
-            # Fallback if specific resolutions weren't captured
+            # General fallback if standard resolutions aren't matched
             if not unique_videos and video_formats:
-                unique_videos = [video_formats[0]]
+                unique_videos = [{
+                    'quality': video_formats[0]['quality'],
+                    'ext': video_formats[0]['ext'],
+                    'url': video_formats[0]['url']
+                }]
 
             return jsonify({
                 'title': title,

@@ -3,7 +3,6 @@ from flask_cors import CORS
 import yt_dlp
 
 app = Flask(__name__)
-# Enable CORS for all routes so GitHub Pages can talk to Render
 CORS(app, resources={r"/*": {"origins": "*"}})
 
 @app.route('/', methods=['GET'])
@@ -18,21 +17,22 @@ def extract_video():
 
     url = data['url']
 
-    # Custom options to help bypass YouTube datacenter/cloud IP blocks
+    # Configuration to bypass YouTube bot detection on cloud servers
     ydl_opts = {
         'quiet': True,
         'no_warnings': True,
         'skip_download': True,
         'format': 'best',
-        'http_headers': {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.5',
-        },
+        # Use iOS/Android clients which bypass standard web bot challenges
         'extractor_args': {
             'youtube': {
-                'player_client': ['android', 'web']
+                'player_client': ['ios', 'mweb'],
+                'skip': ['hls', 'dash']
             }
+        },
+        'http_headers': {
+            'User-Agent': 'com.google.ios.youtube/19.29.1 (iPhone16,2; U; CPU iOS 17_5_1 like Mac OS X; en_US)',
+            'Accept-Language': 'en-US,en;q=0.9',
         }
     }
 
@@ -48,19 +48,20 @@ def extract_video():
             audio_format = None
 
             for f in formats:
-                # Video formats with audio/video
+                # Video formats with audio/video or video-only
                 if f.get('vcodec') != 'none' and f.get('url'):
-                    quality = f.get('format_note') or f"{f.get('height', 'SD')}p"
+                    height = f.get('height')
+                    quality = f"{height}p" if height else (f.get('format_note') or "SD")
                     ext = f.get('ext', 'mp4')
-                    # Keep main resolutions
-                    if f.get('height') in [360, 480, 720, 1080]:
-                        video_formats.append({
-                            'quality': quality,
-                            'ext': ext,
-                            'url': f['url']
-                        })
+                    
+                    video_formats.append({
+                        'quality': quality,
+                        'ext': ext,
+                        'url': f['url'],
+                        'height': height or 0
+                    })
 
-                # Best standalone audio format
+                # Audio stream
                 if f.get('acodec') != 'none' and f.get('vcodec') == 'none' and f.get('url'):
                     audio_format = {
                         'quality': f"{int(f.get('abr', 128))} kbps",
@@ -68,13 +69,21 @@ def extract_video():
                         'url': f['url']
                     }
 
-            # Deduplicate video formats by quality
+            # Filter unique video formats (360p, 480p, 720p, 1080p)
             unique_videos = []
             seen_qualities = set()
-            for v in video_formats:
-                if v['quality'] not in seen_qualities:
+            for v in sorted(video_formats, key=lambda x: x['height'], reverse=True):
+                if v['quality'] not in seen_qualities and v['height'] in [360, 480, 720, 1080]:
                     seen_qualities.add(v['quality'])
-                    unique_videos.append(v)
+                    unique_videos.append({
+                        'quality': v['quality'],
+                        'ext': v['ext'],
+                        'url': v['url']
+                    })
+
+            # Fallback if specific resolutions weren't captured
+            if not unique_videos and video_formats:
+                unique_videos = [video_formats[0]]
 
             return jsonify({
                 'title': title,

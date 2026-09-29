@@ -5,38 +5,45 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Free YouTube Video & Audio Downloader</title>
     <style>
-        body { font-family: 'Segoe UI', sans-serif; background: #121212; color: #fff; display: flex; justify-content: center; padding: 40px 20px; }
-        .card { background: #1e1e1e; padding: 30px; border-radius: 10px; width: 100%; max-width: 520px; text-align: center; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
-        h2 { color: #ff3333; margin-bottom: 20px; }
-        input { width: 80%; padding: 12px; border-radius: 6px; border: 1px solid #333; background: #2a2a2a; color: #fff; margin-bottom: 15px; }
-        button { padding: 12px 24px; background: #ff3333; color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #121212; color: #fff; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px; }
+        .card { background: #1e1e1e; padding: 30px; border-radius: 12px; width: 100%; max-width: 520px; text-align: center; box-shadow: 0 4px 20px rgba(0,0,0,0.6); }
+        h2 { color: #ff3333; margin-bottom: 20px; font-size: 1.8rem; }
+        .input-group { display: flex; gap: 10px; margin-bottom: 15px; flex-direction: column; }
+        input[type="text"] { width: 100%; padding: 14px; border-radius: 6px; border: 1px solid #333; background: #2a2a2a; color: #fff; font-size: 1rem; outline: none; }
+        input[type="text"]:focus { border-color: #ff3333; }
+        button { width: 100%; padding: 14px; background: #ff3333; color: white; border: none; border-radius: 6px; font-weight: bold; font-size: 1rem; cursor: pointer; transition: 0.2s; }
         button:hover { background: #cc0000; }
-        #results { margin-top: 25px; display: none; }
+        #results { margin-top: 25px; display: none; border-top: 1px solid #333; padding-top: 20px; }
         img { max-width: 100%; border-radius: 8px; margin-bottom: 15px; }
-        .section-title { font-size: 0.9rem; text-transform: uppercase; letter-spacing: 1px; color: #aaa; margin: 15px 0 10px; }
+        h3 { font-size: 1.1rem; margin-bottom: 15px; line-height: 1.4; color: #f1f1f1; }
+        .section-title { font-size: 0.85rem; text-transform: uppercase; letter-spacing: 1px; color: #aaa; margin: 15px 0 10px; text-align: left; }
         .dl-container { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
-        .dl-link { display: inline-block; padding: 10px 14px; background: #28a745; color: white; text-decoration: none; border-radius: 5px; font-weight: bold; font-size: 0.9rem; }
+        .dl-link { display: inline-block; padding: 10px 14px; background: #28a745; color: white; text-decoration: none; border-radius: 5px; font-weight: bold; font-size: 0.9rem; transition: 0.2s; }
         .dl-link:hover { background: #218838; }
-        .dl-audio { background: #007bff; }
+        .dl-audio { background: #007bff; width: 100%; text-align: center; margin-bottom: 10px; }
         .dl-audio:hover { background: #0056b3; }
-        .error { color: #ff5555; margin-top: 15px; }
+        .error { color: #ff5555; margin-top: 15px; font-size: 0.95rem; }
+        .loader { display: none; margin-top: 15px; color: #ff9999; font-style: italic; }
     </style>
 </head>
 <body>
 
 <div class="card">
     <h2>YouTube MP4 & MP3 Downloader</h2>
-    <input type="text" id="ytUrl" placeholder="Paste YouTube link here...">
-    <br>
-    <button onclick="processVideo()">Extract Media</button>
+    <div class="input-group">
+        <input type="text" id="ytUrl" placeholder="Paste YouTube link here...">
+        <button onclick="processVideo()">Extract Media</button>
+    </div>
 
+    <div id="loader" class="loader">Extracting media links from Render backend...</div>
     <div id="error" class="error"></div>
 
     <div id="results">
         <h3 id="videoTitle"></h3>
         <img id="videoThumb" src="" alt="Thumbnail">
         
-        <div class="section-title">Audio Formats</div>
+        <div class="section-title">Audio Format</div>
         <div id="audioButtons" class="dl-container"></div>
 
         <div class="section-title">Video Formats</div>
@@ -45,12 +52,12 @@
 </div>
 
 <script>
-// PASTE YOUR RENDER URL HERE (Keep /api/extract at the end)
-const BACKEND_URL = "https://YOUR-RENDER-APP-URL.onrender.com/api/extract";
+const BACKEND_URL = "https://yt-video-downloader-xxgo.onrender.com/api/extract";
 
 async function processVideo() {
     const url = document.getElementById('ytUrl').value.trim();
     const errorDiv = document.getElementById('error');
+    const loaderDiv = document.getElementById('loader');
     const resultsDiv = document.getElementById('results');
     const videoButtons = document.getElementById('videoButtons');
     const audioButtons = document.getElementById('audioButtons');
@@ -63,7 +70,7 @@ async function processVideo() {
         return;
     }
 
-    errorDiv.innerText = 'Extracting media links...';
+    loaderDiv.style.display = 'block';
 
     try {
         const response = await fetch(BACKEND_URL, {
@@ -73,42 +80,51 @@ async function processVideo() {
         });
 
         const data = await response.json();
+        loaderDiv.style.display = 'none';
 
         if (data.error) {
             errorDiv.innerText = data.error;
             return;
         }
 
-        errorDiv.innerText = '';
         document.getElementById('videoTitle').innerText = data.title;
         document.getElementById('videoThumb').src = data.thumbnail;
 
-        // Render Audio Link
+        // Render Audio Download Link
         audioButtons.innerHTML = '';
         if (data.audio_format) {
             const a = document.createElement('a');
             a.href = data.audio_format.url;
             a.target = "_blank";
+            a.rel = "noreferrer";
             a.className = "dl-link dl-audio";
             a.innerText = `🎵 Download Audio (${data.audio_format.quality})`;
             audioButtons.appendChild(a);
+        } else {
+            audioButtons.innerText = "No separate audio stream found.";
         }
 
-        // Render Video Links
+        // Render Video Download Links
         videoButtons.innerHTML = '';
-        data.video_formats.forEach(f => {
-            const a = document.createElement('a');
-            a.href = f.url;
-            a.target = "_blank";
-            a.className = "dl-link";
-            a.innerText = `🎬 ${f.quality} (${f.ext.toUpperCase()})`;
-            videoButtons.appendChild(a);
-        });
+        if (data.video_formats && data.video_formats.length > 0) {
+            data.video_formats.forEach(f => {
+                const a = document.createElement('a');
+                a.href = f.url;
+                a.target = "_blank";
+                a.rel = "noreferrer";
+                a.className = "dl-link";
+                a.innerText = `🎬 ${f.quality} (${f.ext.toUpperCase()})`;
+                videoButtons.appendChild(a);
+            });
+        } else {
+            videoButtons.innerText = "No video formats available.";
+        }
 
         resultsDiv.style.display = 'block';
 
     } catch (err) {
-        errorDiv.innerText = 'Unable to connect to server.';
+        loaderDiv.style.display = 'none';
+        errorDiv.innerText = 'Unable to connect to the backend server. Note: Free Render instances take ~30 seconds to wake up on first load.';
     }
 }
 </script>

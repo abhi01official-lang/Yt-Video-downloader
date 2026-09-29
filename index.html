@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Free YouTube Video & Audio Downloader</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background: #121212; color: #fff; display: flex; justify-content: center; padding: 40px 20px; }
+        .card { background: #1e1e1e; padding: 30px; border-radius: 10px; width: 100%; max-width: 520px; text-align: center; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
+        h2 { color: #ff3333; margin-bottom: 20px; }
+        input { width: 80%; padding: 12px; border-radius: 6px; border: 1px solid #333; background: #2a2a2a; color: #fff; margin-bottom: 15px; }
+        button { padding: 12px 24px; background: #ff3333; color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; }
+        button:hover { background: #cc0000; }
+        #results { margin-top: 25px; display: none; }
+        img { max-width: 100%; border-radius: 8px; margin-bottom: 15px; }
+        .section-title { font-size: 0.9rem; text-transform: uppercase; letter-spacing: 1px; color: #aaa; margin: 15px 0 10px; }
+        .dl-container { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+        .dl-link { display: inline-block; padding: 10px 14px; background: #28a745; color: white; text-decoration: none; border-radius: 5px; font-weight: bold; font-size: 0.9rem; }
+        .dl-link:hover { background: #218838; }
+        .dl-audio { background: #007bff; }
+        .dl-audio:hover { background: #0056b3; }
+        .error { color: #ff5555; margin-top: 15px; }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <h2>YouTube MP4 & MP3 Downloader</h2>
+    <input type="text" id="ytUrl" placeholder="Paste YouTube link here...">
+    <br>
+    <button onclick="processVideo()">Extract Media</button>
+
+    <div id="error" class="error"></div>
+
+    <div id="results">
+        <h3 id="videoTitle"></h3>
+        <img id="videoThumb" src="" alt="Thumbnail">
+        
+        <div class="section-title">Audio Formats</div>
+        <div id="audioButtons" class="dl-container"></div>
+
+        <div class="section-title">Video Formats</div>
+        <div id="videoButtons" class="dl-container"></div>
+    </div>
+</div>
+
+<script>
+// PASTE YOUR RENDER URL HERE (Keep /api/extract at the end)
+const BACKEND_URL = "https://YOUR-RENDER-APP-URL.onrender.com/api/extract";
+
+async function processVideo() {
+    const url = document.getElementById('ytUrl').value.trim();
+    const errorDiv = document.getElementById('error');
+    const resultsDiv = document.getElementById('results');
+    const videoButtons = document.getElementById('videoButtons');
+    const audioButtons = document.getElementById('audioButtons');
+
+    errorDiv.innerText = '';
+    resultsDiv.style.display = 'none';
+
+    if (!url) {
+        errorDiv.innerText = 'Please enter a YouTube link.';
+        return;
+    }
+
+    errorDiv.innerText = 'Extracting media links...';
+
+    try {
+        const response = await fetch(BACKEND_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url })
+        });
+
+        const data = await response.json();
+
+        if (data.error) {
+            errorDiv.innerText = data.error;
+            return;
+        }
+
+        errorDiv.innerText = '';
+        document.getElementById('videoTitle').innerText = data.title;
+        document.getElementById('videoThumb').src = data.thumbnail;
+
+        // Render Audio Link
+        audioButtons.innerHTML = '';
+        if (data.audio_format) {
+            const a = document.createElement('a');
+            a.href = data.audio_format.url;
+            a.target = "_blank";
+            a.className = "dl-link dl-audio";
+            a.innerText = `🎵 Download Audio (${data.audio_format.quality})`;
+            audioButtons.appendChild(a);
+        }
+
+        // Render Video Links
+        videoButtons.innerHTML = '';
+        data.video_formats.forEach(f => {
+            const a = document.createElement('a');
+            a.href = f.url;
+            a.target = "_blank";
+            a.className = "dl-link";
+            a.innerText = `🎬 ${f.quality} (${f.ext.toUpperCase()})`;
+            videoButtons.appendChild(a);
+        });
+
+        resultsDiv.style.display = 'block';
+
+    } catch (err) {
+        errorDiv.innerText = 'Unable to connect to server.';
+    }
+}
+</script>
+
+</body>
+</html>
